@@ -1,7 +1,7 @@
 package main
 
-// https://www.youtube.com/watch?v=Wp7bKB3zFDo&ab_channel=CodingwithSphere
-//!TODO: 1:10/14:15 capitulo 5
+// https://www.youtube.com/watch?v=wlMhwgdQFOM&ab_channel=CodingwithSphere
+//!TODO: 0:01/14:15 capitulo 7
 import (
 	"fmt"
 	"go-rpg/entities"
@@ -20,24 +20,36 @@ type Game struct {
 	enemies      []*entities.Enemy
 	potions      []*entities.Potion
 	tilemapJSON  *TilemapJSON
+	tilesets     []Tileset
 	tilemapImage *ebiten.Image
 	camera       *Camera
 }
 
 func (g *Game) Update() error {
 
+	maxX := float64(g.tilemapJSON.Layers[0].Width*16) - 16
+	maxY := float64(g.tilemapJSON.Layers[0].Height*16) - 16
+
 	// react to key presses
 	if ebiten.IsKeyPressed(ebiten.KeyRight) {
-		g.player.X += 2
+		if g.player.X+2 <= maxX {
+			g.player.X += 2
+		}
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyLeft) {
-		g.player.X -= 2
+		if g.player.X-2 >= 0 {
+			g.player.X -= 2
+		}
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyUp) {
-		g.player.Y -= 2
+		if g.player.Y-2 >= 0 {
+			g.player.Y -= 2
+		}
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyDown) {
-		g.player.Y += 2
+		if g.player.Y+2 <= maxY {
+			g.player.Y += 2
+		}
 	}
 
 	//* Follow player algorithm
@@ -64,6 +76,12 @@ func (g *Game) Update() error {
 	}
 
 	g.camera.FollowTarget(g.player.X+8, g.player.Y+8, 640, 480)
+	g.camera.Constrain(
+		float64(g.tilemapJSON.Layers[0].Width)*16.0,
+		float64(g.tilemapJSON.Layers[0].Height)*16.0,
+		640,
+		480,
+	)
 
 	return nil
 }
@@ -74,25 +92,28 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	opts := ebiten.DrawImageOptions{}
 
 	// loop over the layers
-	for _, layer := range g.tilemapJSON.Layers {
+	for layerIndex, layer := range g.tilemapJSON.Layers {
 		for index, id := range layer.Data {
+
+			if id == 0 {
+				continue
+			}
+
 			x := index % layer.Width
 			y := index / layer.Width
 
 			x *= 16
 			y *= 16
 
-			srcX := (id - 1) % 22
-			srcY := (id - 1) / 22
-
-			srcX *= 16
-			srcY *= 16
+			img := g.tilesets[layerIndex].Img(id)
 
 			opts.GeoM.Translate(float64(x), float64(y))
 
+			opts.GeoM.Translate(0.0, -(float64(img.Bounds().Dy()) + 16))
+
 			opts.GeoM.Translate(g.camera.X, g.camera.Y)
 
-			screen.DrawImage(g.tilemapImage.SubImage(image.Rect(srcX, srcY, srcX+16, srcY+16)).(*ebiten.Image), &opts)
+			screen.DrawImage(img, &opts)
 			opts.GeoM.Reset()
 		}
 	}
@@ -177,7 +198,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	tilemapJSON, err := NewTilemapJSON("assets/maps/spawn.tmj")
+	tilemapJSON, err := NewTilemapJSON("assets/maps/spawn.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	tilesets, err := tilemapJSON.GenTilesets()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -221,6 +247,7 @@ func main() {
 		},
 		tilemapJSON:  tilemapJSON,
 		tilemapImage: tilemapImg,
+		tilesets:     tilesets,
 		camera:       NewCamera(0, 0),
 	}
 
